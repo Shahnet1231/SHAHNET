@@ -813,7 +813,7 @@ let API = localStorage.getItem('sn_api_url') || API_DEFAULT;
 
 // ══ DATA — sirf memory mein, koi localStorage save nahi ══
 let users = [
-  { uname:'Ateeq', pass:'Admin123', role:'admin', dname:'Admin — Full Access',
+  { uname:'admin', pass:'Admin123', role:'admin', dname:'Admin — Full Access',
     perms:['dashboard','customers','payment','recovery','stock','expenses','import','auditlog','users'] },
   { uname:'branch1', pass:'Branch1', role:'user', dname:'Branch 1',
     perms:['dashboard','payment','recovery'] },
@@ -999,38 +999,26 @@ async function doLogin(){
   const u=document.getElementById('un').value.trim().toLowerCase();
   const p=document.getElementById('pw').value.trim();
   if(!u||!p){document.getElementById('lerr').style.display='block';return;}
-
-  // Pehle local mein check karo
   let user=users.find(x=>x.uname.toLowerCase()===u&&x.pass===p);
-
-  // Agar local mein nahi mila toh Google Sheet se fresh users fetch karo
   if(!user){
     const btn=document.getElementById('login-btn-el');
     if(btn){btn.textContent='⏳ Checking...';btn.disabled=true;}
     try{
       const data=await apiGet('getAll');
       if(data&&Array.isArray(data.users)&&data.users.length>0){
-        const sheetUsers=data.users.map(u=>({
+        const su=data.users.map(u=>({
           uname:String(u['Username']||u['uname']||'').trim().toLowerCase(),
           pass:String(u['Password']||u['pass']||'').trim(),
           role:String(u['Role']||u['role']||'user').trim(),
           dname:String(u['DisplayName']||u['dname']||'').trim(),
           perms:String(u['Permissions']||u['perms']||'').split(',').map(p=>p.trim()).filter(Boolean),
         })).filter(x=>x.uname);
-        if(sheetUsers.length>0){
-          users=sheetUsers;
-          // Default admin hamesha rahega
-          if(!users.find(x=>x.uname==='admin')){
-            users.unshift({uname:'admin',pass:'Admin123',role:'admin',dname:'Admin — Full Access',
-              perms:['dashboard','customers','payment','recovery','stock','expenses','import','auditlog','users']});
-          }
-        }
+        if(su.length>0) users=su;
         user=users.find(x=>x.uname.toLowerCase()===u&&x.pass===p);
       }
     }catch(e){}
     if(btn){btn.textContent='🔐 Login Karein';btn.disabled=false;}
   }
-
   if(user){
     currentUser=user;
     document.getElementById('login-screen').style.display='none';
@@ -1965,5 +1953,444 @@ function showToast(msg,type='ok'){
   setTimeout(()=>t.className='toast',3500);
 }
 </script>
+
+<!-- ══════════════════════════════════════════════ -->
+<!--   SHAH NET AI ASSISTANT                        -->
+<!-- ══════════════════════════════════════════════ -->
+<style>
+#ai-fab{
+  position:fixed;bottom:28px;left:28px;width:58px;height:58px;
+  background:linear-gradient(135deg,#1a2f6e,#2ecc40);
+  border-radius:50%;display:none;align-items:center;justify-content:center;
+  cursor:pointer;z-index:9990;box-shadow:0 4px 20px rgba(26,47,110,.45);
+  font-size:26px;border:none;transition:transform .2s;
+  animation:fabIn .4s cubic-bezier(.34,1.56,.64,1);
+}
+#ai-fab:hover{transform:scale(1.12);}
+@keyframes fabIn{from{opacity:0;transform:scale(0)}to{opacity:1;transform:scale(1)}}
+
+#ai-panel{
+  position:fixed;bottom:98px;left:28px;width:370px;
+  background:var(--white);border:1px solid var(--border);
+  border-radius:22px;box-shadow:0 20px 60px rgba(26,47,110,.22);
+  z-index:9989;display:none;flex-direction:column;
+  overflow:hidden;max-height:540px;
+  animation:panelUp .3s ease;
+}
+@keyframes panelUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+
+/* Header */
+.aih{background:linear-gradient(135deg,#0f1c4d,#1a2f6e);
+  padding:13px 16px;display:flex;align-items:center;gap:10px;}
+.aih-av{width:38px;height:38px;background:linear-gradient(135deg,#1e8f2a,#2ecc40);
+  border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:20px;flex-shrink:0;}
+.aih-txt h3{font-size:14px;font-weight:700;color:#fff;font-family:'Rajdhani',sans-serif;letter-spacing:.5px;}
+.aih-txt p{font-size:10px;color:rgba(255,255,255,.45);}
+.aih-close{margin-left:auto;background:none;border:none;color:rgba(255,255,255,.5);
+  font-size:20px;cursor:pointer;line-height:1;}
+
+/* Messages */
+.aim{flex:1;overflow-y:auto;padding:14px;display:flex;
+  flex-direction:column;gap:10px;max-height:360px;}
+.ai-row{display:flex;gap:8px;align-items:flex-end;}
+.ai-row.u{flex-direction:row-reverse;}
+.ai-ico{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;font-size:14px;flex-shrink:0;margin-bottom:2px;}
+.ai-row.b .ai-ico{background:linear-gradient(135deg,#1e8f2a,#2ecc40);}
+.ai-row.u .ai-ico{background:#1a2f6e;color:#fff;}
+.ai-bub{max-width:82%;padding:10px 13px;border-radius:16px;
+  font-size:13px;line-height:1.55;font-weight:500;position:relative;}
+.ai-row.b .ai-bub{background:var(--bg);border:1px solid var(--border);
+  color:var(--text);border-bottom-left-radius:4px;}
+.ai-row.u .ai-bub{background:linear-gradient(135deg,#1a2f6e,#152560);
+  color:#fff;border-bottom-right-radius:4px;}
+
+/* Speaker button on each bot message */
+.ai-speak-btn{
+  display:inline-flex;align-items:center;gap:4px;
+  margin-top:7px;padding:4px 10px;border-radius:20px;
+  background:rgba(26,47,110,.08);border:1px solid rgba(26,47,110,.15);
+  font-size:11px;font-weight:600;color:var(--navy);cursor:pointer;
+  font-family:'Nunito',sans-serif;transition:all .2s;
+}
+.ai-speak-btn:hover{background:var(--navy);color:#fff;}
+.ai-speak-btn.speaking{background:var(--red);color:#fff;border-color:var(--red);}
+
+/* Typing dots */
+.ai-dots{display:flex;gap:4px;padding:4px 0;}
+.ai-dots span{width:7px;height:7px;background:var(--muted);border-radius:50%;
+  animation:aiDot 1.2s infinite;}
+.ai-dots span:nth-child(2){animation-delay:.2s;}
+.ai-dots span:nth-child(3){animation-delay:.4s;}
+@keyframes aiDot{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-7px)}}
+
+/* Suggestions */
+.ai-sugs{padding:8px 14px;display:flex;gap:6px;flex-wrap:wrap;
+  border-top:1px solid var(--border);background:var(--bg);}
+.ai-sg{padding:5px 11px;background:var(--white);border:1px solid var(--border);
+  border-radius:20px;font-size:11px;cursor:pointer;color:var(--navy);
+  font-weight:700;transition:all .2s;font-family:'Nunito',sans-serif;}
+.ai-sg:hover{background:var(--navy);color:#fff;border-color:var(--navy);}
+
+/* Input */
+.ai-inp-wrap{padding:10px 12px;border-top:1px solid var(--border);
+  display:flex;gap:7px;align-items:center;}
+#ai-inp{flex:1;padding:9px 14px;border:1.5px solid var(--border);border-radius:22px;
+  font-size:13px;font-family:'Nunito',sans-serif;outline:none;
+  background:var(--bg);color:var(--text);transition:border .2s;}
+#ai-inp:focus{border-color:var(--navy);}
+.ai-btn{width:38px;height:38px;border-radius:50%;border:none;cursor:pointer;
+  font-size:17px;display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;transition:all .2s;}
+#ai-mic{background:var(--bg);border:1.5px solid var(--border);}
+#ai-mic.on{background:#e02020;border-color:#e02020;animation:micP 1s infinite;}
+@keyframes micP{0%,100%{box-shadow:0 0 0 0 rgba(224,32,32,.4)}50%{box-shadow:0 0 0 8px rgba(224,32,32,0)}}
+#ai-go{background:linear-gradient(135deg,#1a2f6e,#2ecc40);color:#fff;}
+</style>
+
+<!-- FAB -->
+<button id="ai-fab" onclick="aiToggle()">🤖</button>
+
+<!-- Panel -->
+<div id="ai-panel">
+  <div class="aih">
+    <div class="aih-av">🤖</div>
+    <div class="aih-txt">
+      <h3>SHAH NET Assistant</h3>
+      <p>Urdu ya English — Voice ya Text</p>
+    </div>
+    <button class="aih-close" onclick="aiToggle()">✕</button>
+  </div>
+
+  <div class="aim" id="ai-msgs"></div>
+
+  <div class="ai-sugs">
+    <span class="ai-sg" onclick="aiAsk('C001 ka balance batao')">🔍 Balance</span>
+    <span class="ai-sg" onclick="aiAsk('Recovery list do')">⚠️ Recovery</span>
+    <span class="ai-sg" onclick="aiAsk('Fiber kitna bacha hai')">🧵 Fiber</span>
+    <span class="ai-sg" onclick="aiAsk('Aaj ki payments')">💳 Payments</span>
+    <span class="ai-sg" onclick="aiAsk('Kharcha batao')">💰 Kharcha</span>
+    <span class="ai-sg" onclick="aiAsk('Net profit')">📈 Profit</span>
+  </div>
+
+  <div class="ai-inp-wrap">
+    <input type="text" id="ai-inp" placeholder="Kuch bhi poochein..."
+      onkeypress="if(event.key==='Enter')aiSend()">
+    <button class="ai-btn" id="ai-mic" onclick="aiVoice()" title="Voice">🎤</button>
+    <button class="ai-btn" id="ai-go" onclick="aiSend()">➤</button>
+  </div>
+</div>
+
+<script>
+// ══ AI STATE ══
+let aiOpen=false, aiMicOn=false, aiRecog=null, aiSpeaking=false, aiSpeakEl=null;
+
+// ── Show fab after login ──
+function aiShowFab(){document.getElementById('ai-fab').style.display='flex';}
+
+function aiToggle(){
+  aiOpen=!aiOpen;
+  const p=document.getElementById('ai-panel');
+  p.style.display=aiOpen?'flex':'none';
+  if(aiOpen&&!document.querySelector('.ai-row')) aiWelcome();
+  if(aiOpen) setTimeout(()=>document.getElementById('ai-inp').focus(),100);
+}
+
+function aiWelcome(){
+  aiAddBot('Assalam o Alaikum! 👋<br>Main SHAH NET Assistant hoon.<br><br>Aap mujhse ye pooch sakte hain:<br>• <b>C001 ka balance batao</b><br>• <b>Recovery list do</b><br>• <b>Router kitne hain?</b><br>• <b>12 Core fiber kitna bacha?</b><br>• <b>Aaj ki payments kitni hain?</b><br>• <b>Is mahine ka kharcha?</b><br>• <b>Net profit batao</b>');
+}
+
+// ── Add messages ──
+function aiAddUser(txt){
+  const box=document.getElementById('ai-msgs');
+  const d=document.createElement('div');
+  d.className='ai-row u';
+  d.innerHTML=`<div class="ai-ico">👤</div><div class="ai-bub">${txt}</div>`;
+  box.appendChild(d);
+  box.scrollTop=box.scrollHeight;
+}
+
+function aiAddBot(html){
+  const box=document.getElementById('ai-msgs');
+  const d=document.createElement('div');
+  d.className='ai-row b';
+  // Strip HTML for speech
+  const plainText=html.replace(/<br\s*\/?>/gi,' ').replace(/<[^>]+>/g,'').replace(/\s+/g,' ').trim();
+  const speakId='spk_'+Date.now();
+  d.innerHTML=`<div class="ai-ico">🤖</div>
+    <div>
+      <div class="ai-bub">${html}</div>
+      <button class="ai-speak-btn" id="${speakId}" onclick="aiSpeak(this,'${encodeURIComponent(plainText)}')">🔊 Sunein</button>
+    </div>`;
+  box.appendChild(d);
+  box.scrollTop=box.scrollHeight;
+}
+
+function aiTyping(){
+  const box=document.getElementById('ai-msgs');
+  const d=document.createElement('div');
+  d.className='ai-row b'; d.id='ai-typing';
+  d.innerHTML='<div class="ai-ico">🤖</div><div class="ai-bub"><div class="ai-dots"><span></span><span></span><span></span></div></div>';
+  box.appendChild(d); box.scrollTop=box.scrollHeight;
+}
+function aiStopTyping(){const e=document.getElementById('ai-typing');if(e)e.remove();}
+
+// ── Send ──
+function aiSend(){
+  const inp=document.getElementById('ai-inp');
+  const q=inp.value.trim(); if(!q)return;
+  aiAddUser(q); inp.value='';
+  aiTyping();
+  setTimeout(()=>{
+    aiStopTyping();
+    const ans=aiBrain(q);
+    aiAddBot(ans);
+  },500);
+}
+
+function aiAsk(q){
+  if(!aiOpen) aiToggle();
+  setTimeout(()=>{
+    document.getElementById('ai-inp').value=q;
+    aiSend();
+  },300);
+}
+
+// ── SPEAKER (Text to Speech) ──
+function aiSpeak(btn, encoded){
+  const text=decodeURIComponent(encoded);
+  // Agar pehle se bol raha hai toh band karo
+  if(window.speechSynthesis.speaking){
+    window.speechSynthesis.cancel();
+    document.querySelectorAll('.ai-speak-btn').forEach(b=>{
+      b.classList.remove('speaking');b.textContent='🔊 Sunein';
+    });
+    if(aiSpeakEl===btn){aiSpeakEl=null;return;}
+  }
+  // Naya speech
+  const utt=new SpeechSynthesisUtterance(text);
+  // Urdu detect karein
+  const hasUrdu=/[\u0600-\u06FF]/.test(text);
+  utt.lang=hasUrdu?'ur-PK':'en-US';
+  utt.rate=0.9; utt.pitch=1;
+  btn.classList.add('speaking'); btn.textContent='⏹ Rok do';
+  aiSpeakEl=btn;
+  utt.onend=()=>{btn.classList.remove('speaking');btn.textContent='🔊 Sunein';aiSpeakEl=null;};
+  utt.onerror=()=>{btn.classList.remove('speaking');btn.textContent='🔊 Sunein';aiSpeakEl=null;};
+  window.speechSynthesis.speak(utt);
+}
+
+// ── VOICE INPUT ──
+function aiVoice(){
+  if(!('webkitSpeechRecognition' in window||'SpeechRecognition' in window)){
+    aiAddBot('⚠️ Browser voice support nahi karta. Chrome mein kholein!'); return;
+  }
+  if(aiMicOn){aiRecog&&aiRecog.stop();return;}
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  aiRecog=new SR();
+  aiRecog.lang='ur-PK';
+  aiRecog.interimResults=false;
+  aiRecog.maxAlternatives=3;
+  aiMicOn=true;
+  const mic=document.getElementById('ai-mic');
+  mic.classList.add('on'); mic.textContent='🔴';
+  aiRecog.start();
+  aiRecog.onresult=e=>{
+    let best=e.results[0][0].transcript;
+    for(let i=1;i<e.results[0].length;i++){
+      if(e.results[0][i].confidence>e.results[0][0].confidence) best=e.results[0][i].transcript;
+    }
+    document.getElementById('ai-inp').value=best;
+    aiMicStop(); aiSend();
+  };
+  aiRecog.onerror=aiMicStop;
+  aiRecog.onend=aiMicStop;
+}
+function aiMicStop(){
+  aiMicOn=false;
+  const mic=document.getElementById('ai-mic');
+  mic.classList.remove('on'); mic.textContent='🎤';
+}
+
+// ══════════════════════════════════════════════════════
+//   AI BRAIN — Smart Query Processor
+// ══════════════════════════════════════════════════════
+function aiBrain(q){
+  const ql=q.toLowerCase().trim();
+  const has=w=>Array.isArray(w)?w.some(x=>ql.includes(x)):ql.includes(w);
+
+  // ── Customer ID detect ──
+  const idM=q.match(/\bC\d+\b/i);
+  if(idM){
+    const id=idM[0].toUpperCase();
+    const c=customers.find(x=>x.id.toUpperCase()===id);
+    if(!c) return `❌ Customer <b>${id}</b> system mein nahi mila.`;
+    const total=(c.old||0)+(c.live||0);
+    const cPays=payments.filter(p=>p.custId===c.id);
+    const lp=cPays.slice(-1)[0];
+
+    if(has(['history','payment','kab diya','kitna diya','payments'])){
+      if(!cPays.length) return `<b>${c.name}</b> (${id}) ki abhi koi payment nahi.`;
+      const rows=cPays.slice(-5).reverse().map(p=>`• ${p.date} — PKR ${p.amt.toLocaleString()} (${p.emp})`).join('<br>');
+      const tot=cPays.reduce((s,p)=>s+p.amt,0);
+      return `💳 <b>${c.name}</b> ki akhri ${Math.min(5,cPays.length)} payments:<br>${rows}<br><br>✅ Total diya: PKR ${tot.toLocaleString()}`;
+    }
+    // Default — full balance info
+    const status=total<=0?'✅ Clear — Koi baaki nahi!':`⚠️ Total Baaki: PKR ${total.toLocaleString()}`;
+    return `👤 <b>${c.name}</b> (${id})<br>📞 ${c.phone}<br>📍 ${c.area||'—'}<br>📦 ${c.pkg}<br>💵 Monthly Fee: PKR ${(c.fee||0).toLocaleString()}<br><br>🔴 Old Balance: PKR ${(c.old||0).toLocaleString()}<br>🔵 Live Balance: PKR ${(c.live||0).toLocaleString()}<br><b>${status}</b>${lp?`<br><br>✅ Akhri payment: PKR ${lp.amt.toLocaleString()} — ${lp.date}`:''}`;
+  }
+
+  // ── Naam se dhundna ──
+  const stopWords=['ka','ki','ke','balance','baaki','payment','history','batao','do','hai','hain','bolo','pata'];
+  const cleaned=ql.split(' ').filter(w=>w.length>2&&!stopWords.includes(w)).join(' ');
+  if(cleaned.length>2&&!has(['recovery','stock','fiber','router','onu','kharcha','expense','aaj','today','mahine','month','profit','customer','total','summary'])){
+    const found=customers.filter(c=>
+      c.name.toLowerCase().includes(cleaned)||
+      cleaned.split(' ').some(w=>w.length>2&&c.name.toLowerCase().includes(w))
+    );
+    if(found.length===1){
+      const c=found[0]; const total=(c.old||0)+(c.live||0);
+      return `👤 <b>${c.name}</b> (${c.id})<br>📞 ${c.phone}<br>📦 ${c.pkg}<br>⚠️ Baaki: PKR ${total.toLocaleString()}<br>🔵 Status: ${c.status}`;
+    }
+    if(found.length>1&&found.length<=6){
+      return `${found.length} customers mile:<br>`+found.map(c=>`• <b>${c.id}</b> — ${c.name} (PKR ${((c.old||0)+(c.live||0)).toLocaleString()} baaki)`).join('<br>');
+    }
+  }
+
+  // ── Recovery List ──
+  if(has(['recovery','baaki','baki','due','outstanding'])){
+    const list=customers.filter(c=>(c.old||0)+(c.live||0)>0);
+    if(!list.length) return '✅ Mubarak! Koi baaki nahi — sab clear hain!';
+    const total=list.reduce((s,c)=>s+(c.old||0)+(c.live||0),0);
+    const top=list.sort((a,b)=>((b.old||0)+(b.live||0))-((a.old||0)+(a.live||0))).slice(0,8);
+    const rows=top.map((c,i)=>`${i+1}. <b>${c.id}</b> ${c.name} — <b>PKR ${((c.old||0)+(c.live||0)).toLocaleString()}</b>`).join('<br>');
+    return `⚠️ <b>Recovery List (${list.length} customers)</b><br>Grand Total: <b>PKR ${total.toLocaleString()}</b><br><br>${rows}${list.length>8?`<br>...aur ${list.length-8} aur customers`:''}`;
+  }
+
+  // ── Stock — Fiber ──
+  if(has(['fiber','cable','core'])){
+    const ftype=Object.keys(stockData.fiber).find(k=>ql.includes(k.toLowerCase()));
+    if(ftype){
+      const v=stockData.fiber[ftype];
+      const bal=v.in-v.out;
+      return `🧵 <b>${ftype} Fiber:</b><br>✅ Bacha hai: <b>${bal} meter</b><br>📥 Total In: ${v.in}m<br>📤 Total Out: ${v.out}m<br>${bal<100?'⚠️ Stock kam hai!':''}`;
+    }
+    // All fiber
+    const rows=Object.entries(stockData.fiber).map(([k,v])=>{
+      const b=v.in-v.out;
+      return `• <b>${k}:</b> ${b}m ${b<100?'⚠️':'✅'}`;
+    }).join('<br>');
+    return `🧵 <b>Fiber Stock:</b><br>${rows}`;
+  }
+
+  // ── Stock — Items ──
+  const itemKeys=Object.keys(stockData.items);
+  const foundItem=itemKeys.find(k=>ql.includes(k.toLowerCase()));
+  if(foundItem||has(['router','onu','splitter','joinder','power supply','pital','patch','item','equipment'])){
+    if(foundItem){
+      const v=stockData.items[foundItem];
+      const bal=v.in-v.out;
+      return `🔧 <b>${foundItem}:</b><br>✅ Bacha hai: <b>${bal} pcs</b><br>📥 Total In: ${v.in}<br>📤 Total Out: ${v.out}<br>${bal===0?'❌ Stock khatam!':bal<3?'⚠️ Bahut kam bacha hai!':''}`;
+    }
+    // All items
+    const rows=Object.entries(stockData.items).map(([k,v])=>{
+      const b=v.in-v.out;
+      return `• <b>${k}:</b> ${b} pcs ${b===0?'❌':b<3?'⚠️':'✅'}`;
+    }).join('<br>');
+    return `🔧 <b>Items Stock:</b><br>${rows}`;
+  }
+
+  // ── Full Stock ──
+  if(has(['stock','saman'])){
+    const fRows=Object.entries(stockData.fiber).map(([k,v])=>`• ${k}: <b>${v.in-v.out}m</b>`).join('<br>');
+    const iRows=Object.entries(stockData.items).map(([k,v])=>`• ${k}: <b>${v.in-v.out} pcs</b>`).join('<br>');
+    return `📦 <b>Full Stock Overview:</b><br><br>🧵 <b>Fiber:</b><br>${fRows}<br><br>🔧 <b>Items:</b><br>${iRows}`;
+  }
+
+  // ── Aaj ki payments ──
+  if(has(['aaj','today','aj'])&&has(['payment','kitna','total','aaya','aya','received'])){
+    const today=new Date().toISOString().split('T')[0];
+    const tp=payments.filter(p=>p.date===today);
+    const tot=tp.reduce((s,p)=>s+p.amt,0);
+    if(!tp.length) return '📊 Aaj abhi koi payment nahi aayi.';
+    const rows=tp.map(p=>`• ${p.custName} — PKR ${p.amt.toLocaleString()} (${p.emp})`).join('<br>');
+    return `📊 <b>Aaj ki payments (${tp.length}):</b><br>Total: <b>PKR ${tot.toLocaleString()}</b><br><br>${rows}`;
+  }
+
+  // ── Is mahine ──
+  if(has(['mahine','month','monthly','is mahine'])){
+    const now=new Date();
+    const prefix=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+    if(has(['kharcha','expense','kharch'])){
+      const me=expenses.filter(e=>e.date&&e.date.startsWith(prefix));
+      const tot=me.reduce((s,e)=>s+e.amt,0);
+      const fuel=me.filter(e=>e.cat==='Fuel').reduce((s,e)=>s+e.amt,0);
+      const adv=me.filter(e=>e.cat==='Advance').reduce((s,e)=>s+e.amt,0);
+      return `💰 <b>Is mahine ka kharcha:</b><br>Total: <b>PKR ${tot.toLocaleString()}</b><br>Fuel: PKR ${fuel.toLocaleString()}<br>Advance: PKR ${adv.toLocaleString()}<br>Entries: ${me.length}`;
+    }
+    const mp=payments.filter(p=>p.date&&p.date.startsWith(prefix));
+    const tot=mp.reduce((s,p)=>s+p.amt,0);
+    return `📊 <b>Is mahine ki payments:</b><br>Total: <b>PKR ${tot.toLocaleString()}</b><br>Count: ${mp.length} payments`;
+  }
+
+  // ── Kharcha ──
+  if(has(['kharcha','expense','kharch','fuel','advance','chai','tea','food'])){
+    const tot=expenses.reduce((s,e)=>s+e.amt,0);
+    const fuel=expenses.filter(e=>e.cat==='Fuel').reduce((s,e)=>s+e.amt,0);
+    const adv=expenses.filter(e=>e.cat==='Advance').reduce((s,e)=>s+e.amt,0);
+    const food=expenses.filter(e=>['Tea','Food'].includes(e.cat)).reduce((s,e)=>s+e.amt,0);
+    const other=expenses.filter(e=>e.cat==='Other').reduce((s,e)=>s+e.amt,0);
+    return `💰 <b>Total Kharcha:</b><br>Fuel: PKR ${fuel.toLocaleString()}<br>Advance: PKR ${adv.toLocaleString()}<br>Tea/Food: PKR ${food.toLocaleString()}<br>Other: PKR ${other.toLocaleString()}<br><br><b>Grand Total: PKR ${tot.toLocaleString()}</b>`;
+  }
+
+  // ── Net Profit ──
+  if(has(['profit','munafa','net profit','earning','kamai'])){
+    const rec=payments.reduce((s,p)=>s+p.amt,0);
+    const exp=expenses.reduce((s,e)=>s+e.amt,0);
+    const profit=rec-exp;
+    return `💹 <b>Net Profit:</b><br>✅ Collections: PKR ${rec.toLocaleString()}<br>❌ Expenses: PKR ${exp.toLocaleString()}<br><br>${profit>=0?'✅':'⚠️'} <b>Net Profit: PKR ${profit.toLocaleString()}</b>`;
+  }
+
+  // ── Customers summary ──
+  if(has(['customer','customers','kitne customers','total customers'])){
+    const active=customers.filter(c=>c.status==='Active').length;
+    const inactive=customers.length-active;
+    const baaki=customers.filter(c=>(c.old||0)+(c.live||0)>0).length;
+    return `👥 <b>Customers Overview:</b><br>Total: ${customers.length}<br>✅ Active: ${active}<br>🔴 Inactive: ${inactive}<br>⚠️ Baaki wale: ${baaki}`;
+  }
+
+  // ── Area ──
+  const areas=[...new Set(customers.map(c=>c.area).filter(Boolean))];
+  for(const area of areas){
+    if(ql.includes(area.toLowerCase())){
+      const ac=customers.filter(c=>c.area===area);
+      const baaki=ac.filter(c=>(c.old||0)+(c.live||0)>0);
+      return `📍 <b>${area}</b><br>Total: ${ac.length} customers<br>Baaki wale: ${baaki.length}<br><br>${ac.slice(0,8).map(c=>`• <b>${c.id}</b> ${c.name} — ${c.status}`).join('<br>')}`;
+    }
+  }
+
+  // ── Dashboard summary ──
+  if(has(['summary','overview','sab','dashboard','total'])){
+    const active=customers.filter(c=>c.status==='Active').length;
+    const baaki=customers.filter(c=>(c.old||0)+(c.live||0)>0);
+    const totalBaaki=baaki.reduce((s,c)=>s+(c.old||0)+(c.live||0),0);
+    const rec=payments.reduce((s,p)=>s+p.amt,0);
+    const exp=expenses.reduce((s,e)=>s+e.amt,0);
+    return `📊 <b>SHAH NET Overview:</b><br>👥 Customers: ${customers.length} (Active: ${active})<br>⚠️ Baaki wale: ${baaki.length} (PKR ${totalBaaki.toLocaleString()})<br>💳 Total received: PKR ${rec.toLocaleString()}<br>💰 Total kharcha: PKR ${exp.toLocaleString()}<br>💹 Net Profit: PKR ${(rec-exp).toLocaleString()}`;
+  }
+
+  return `🤔 Samajh nahi aaya. Ye try karein:<br>• <b>C001 ka balance</b><br>• <b>Recovery list do</b><br>• <b>12 Core fiber kitna bacha?</b><br>• <b>Router kitne hain?</b><br>• <b>Aaj ki payments</b><br>• <b>Kharcha batao</b><br>• <b>Net profit</b>`;
+}
+
+// Hook into initApp to show FAB
+document.addEventListener('DOMContentLoaded',()=>{
+  const orig=window.initApp;
+  if(typeof orig==='function'){
+    window.initApp=function(){orig.apply(this,arguments);aiShowFab();};
+  }
+});
+</script>
+
 </body>
 </html>
