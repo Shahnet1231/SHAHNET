@@ -277,9 +277,9 @@ tr:hover td{background:var(--bg);}
     </div>
     <div class="lfield"><label>Username</label><input type="text" id="un" placeholder="username" autocomplete="off"></div>
     <div class="lfield"><label>Password</label><input type="password" id="pw" placeholder="••••••••"></div>
-    <button class="login-btn" onclick="doLogin()">🔐 Login Karein</button>
+    <button class="login-btn" id="login-btn-el" onclick="doLogin()">🔐 Login Karein</button>
     <div class="login-error" id="lerr">❌ Username ya Password galat hai!</div>
-    <div class="login-hint"><b>Default:</b> admin / Admin123</div>
+    <div class="login-hint">⚡ Powered by <b>SHAH Group</b></div>
   </div>
 </div>
 
@@ -995,10 +995,42 @@ function renderAll(){
 }
 
 // ══ AUTH ══
-function doLogin(){
+async function doLogin(){
   const u=document.getElementById('un').value.trim().toLowerCase();
   const p=document.getElementById('pw').value.trim();
-  const user=users.find(x=>x.uname.toLowerCase()===u&&x.pass===p);
+  if(!u||!p){document.getElementById('lerr').style.display='block';return;}
+
+  // Pehle local mein check karo
+  let user=users.find(x=>x.uname.toLowerCase()===u&&x.pass===p);
+
+  // Agar local mein nahi mila toh Google Sheet se fresh users fetch karo
+  if(!user){
+    const btn=document.getElementById('login-btn-el');
+    if(btn){btn.textContent='⏳ Checking...';btn.disabled=true;}
+    try{
+      const data=await apiGet('getAll');
+      if(data&&Array.isArray(data.users)&&data.users.length>0){
+        const sheetUsers=data.users.map(u=>({
+          uname:String(u['Username']||u['uname']||'').trim().toLowerCase(),
+          pass:String(u['Password']||u['pass']||'').trim(),
+          role:String(u['Role']||u['role']||'user').trim(),
+          dname:String(u['DisplayName']||u['dname']||'').trim(),
+          perms:String(u['Permissions']||u['perms']||'').split(',').map(p=>p.trim()).filter(Boolean),
+        })).filter(x=>x.uname);
+        if(sheetUsers.length>0){
+          users=sheetUsers;
+          // Default admin hamesha rahega
+          if(!users.find(x=>x.uname==='admin')){
+            users.unshift({uname:'admin',pass:'Admin123',role:'admin',dname:'Admin — Full Access',
+              perms:['dashboard','customers','payment','recovery','stock','expenses','import','auditlog','users']});
+          }
+        }
+        user=users.find(x=>x.uname.toLowerCase()===u&&x.pass===p);
+      }
+    }catch(e){}
+    if(btn){btn.textContent='🔐 Login Karein';btn.disabled=false;}
+  }
+
   if(user){
     currentUser=user;
     document.getElementById('login-screen').style.display='none';
