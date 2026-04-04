@@ -2113,8 +2113,8 @@ async function loadAiQa(){
     if(data && Array.isArray(data['aiAssistant'] || data['AI Assistant'])){
       const raw = data['aiAssistant'] || data['AI Assistant'];
       aiQaData = raw.map(r=>({
-        q: String(r['Sawal'] || r['Q'] || r['Question'] || '').trim().toLowerCase(),
-        a: String(r['Jawab'] || r['A'] || r['Answer'] || '').trim(),
+        q: String(r['Sawal (Question)'] || r['Sawal'] || r['Q'] || r['Question'] || '').trim().toLowerCase(),
+        a: String(r['Jawab (Answer)'] || r['Jawab'] || r['A'] || r['Answer'] || '').trim(),
       })).filter(x=>x.q && x.a);
       aiQaLoaded = true;
       console.log('AI QA loaded:', aiQaData.length, 'entries');
@@ -2128,16 +2128,27 @@ async function loadAiQa(){
 function findSheetAnswer(q){
   if(!aiQaData.length) return null;
   const ql = q.toLowerCase().trim();
+
+  // ── Customer ID ya naam ho toh Sheet QA skip karo ──
+  const qWords = q.trim().split(/\s+/);
+  const isCustomerId = customers.some(c =>
+    qWords.some(w => c.id.toLowerCase() === w.toLowerCase())
+  );
+  if(isCustomerId) return null;
+
+  // ── System queries skip karo ──
+  const skipWords = ['balance','baaki','baki','recovery','stock','fiber',
+    'router','onu','payment','kharcha','expense','profit','aaj','mahine'];
+  if(skipWords.some(w => ql.includes(w))) return null;
+
   // Exact match first
   let match = aiQaData.find(x => x.q === ql);
   if(match) return match.a;
-  // Contains match
-  match = aiQaData.find(x => ql.includes(x.q) || x.q.includes(ql));
-  if(match) return match.a;
-  // Word match (any 2+ char word)
-  const words = ql.split(/\s+/).filter(w=>w.length>2);
-  match = aiQaData.find(x => words.some(w => x.q.includes(w)));
-  if(match) return match.a;
+  // Contains match — sirf short queries
+  if(ql.length < 25){
+    match = aiQaData.find(x => ql.includes(x.q) || x.q.includes(ql));
+    if(match) return match.a;
+  }
   return null;
 }
 
@@ -2283,10 +2294,13 @@ function aiBrain(q){
   if(sheetAns) return sheetAns;
 
   // 2️⃣ Customer ID
-  const idM=q.match(/\bC\d+\b/i);
-  if(idM){
-    const id=idM[0].toUpperCase();
-    const c=customers.find(x=>x.id.toUpperCase()===id);
+ const qWords2 = q.trim().split(/\s+/);
+  const foundById = customers.find(cx =>
+    qWords2.some(w => cx.id.toLowerCase() === w.toLowerCase())
+  );
+  if(foundById){
+    const c = foundById;
+    const id = c.id;
     if(!c) return `❌ Customer <b>${id}</b> system mein nahi mila.`;
     const total=(c.old||0)+(c.live||0);
     const cPays=payments.filter(p=>p.custId===c.id);
