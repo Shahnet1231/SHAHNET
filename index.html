@@ -2373,11 +2373,6 @@ function aiBrain(q){
     const profit=rec-exp;
     return `💹 <b>Net Profit:</b><br>Collections: PKR ${rec.toLocaleString()}<br>Expenses: PKR ${exp.toLocaleString()}<br>${profit>=0?'✅':'⚠️'} <b>Net: PKR ${profit.toLocaleString()}</b>`;
   }
-
-  // Default
-  return `🤔 Samajh nahi aaya. Ye try karein:<br>• <b>C001 ka balance</b><br>• <b>Recovery list do</b><br>• <b>12 Core fiber kitna bacha?</b><br>• <b>Aaj ki payments</b><br>• <b>Kharcha batao</b>`;
-}
-
 // ══ INIT hook ══
 document.addEventListener('DOMContentLoaded',()=>{
   const orig=window.initApp;
